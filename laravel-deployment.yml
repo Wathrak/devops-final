@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+        - name: webserver
+          imagePullPolicy: Never
+          image: final-app:latest
+          workingDir: /var/www
+          ports:
+            - containerPort: 8080
+            - containerPort: 22
+          volumeMounts:
+            - name: laravel-code
+              mountPath: /var/www/public
+            - name: php-config
+              mountPath: /usr/local/etc/php/php.ini
+              subPath: php.ini
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+
+        - name: db
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: Hello@123
+            - name: MYSQL_DATABASE
+              value: wathrak-db
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+
+      volumes:
+        - name: laravel-code
+          hostPath:
+            path: /home/wathrak/University/Final/laravel
+        - name: php-config
+          configMap:
+            name: php-config
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+        - name: mysql-storage
+          emptyDir: {}
