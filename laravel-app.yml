@@ -1,0 +1,47 @@
+- name: Laravel Webserver Automation
+  hosts: localhost
+  connection: local
+  vars:
+    container_name: webserver
+    project_path: /var/www
+
+  tasks:
+    - name: Get the current Laravel pod name
+      shell: kubectl get pods -l app=laravel -o jsonpath="{.items[0].metadata.name}"
+      register: pod_name_cmd
+
+    - name: Set pod_name variable
+      set_fact:
+        pod_name: "{{ pod_name_cmd.stdout }}"
+
+    - name: Ensure clean git status
+      shell: |
+        kubectl exec {{ pod_name }} -c {{ container_name }} -- sh -c "cd {{ project_path }} && git status --porcelain"
+      register: git_status
+      failed_when: git_status.rc != 0 and git_status.stdout != ""
+
+    - name: Fail if there are local changes
+      fail:
+        msg: "There are uncommitted changes in the Laravel repo!"
+      when: git_status.stdout != ""
+
+    - name: Set upstream branch for current branch (ignore if already set)
+      shell: |
+        kubectl exec {{ pod_name }} -c {{ container_name }} -- sh -c "cd {{ project_path }} && git branch --set-upstream-to=origin/main"
+      ignore_errors: yes
+
+    - name: Run git pull
+      shell: |
+        kubectl exec {{ pod_name }} -c {{ container_name }} -- sh -c "git config --global --add safe.directory {{ project_path }} && cd {{ project_path }} && git pull"
+
+    - name: Run composer install
+      shell: |
+        kubectl exec {{ pod_name }} -c {{ container_name }} -- sh -c "cd {{ project_path }} && composer install --no-interaction --prefer-dist"
+
+    - name: Run npm install and build
+      shell: |
+        kubectl exec {{ pod_name }} -c {{ container_name }} -- sh -c "cd {{ project_path }} && npm install && npm run build"
+
+    - name: Run tests using SQLite
+      shell: |
+        kubectl exec {{ pod_name }} -c {{ container_name }} -- sh -c "cd {{ project_path }} && php artisan config:clear && php artisan migrate:fresh --env=testing && php artisan test --env=testing"
